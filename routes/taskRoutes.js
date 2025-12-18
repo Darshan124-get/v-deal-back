@@ -6,8 +6,10 @@ import { requireAdmin } from '../middleware/auth.js';
 import { Task } from '../models/Task.js';
 import { Contact } from '../models/Contact.js';
 import { Excel } from '../models/Excel.js';
+import { Teacher } from '../models/Teacher.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { uploadToS3, generateS3Key, deleteFromS3, generatePresignedUrl } from '../config/s3.js';
+import { sendNotificationToTeacher } from '../services/fcmService.js';
 
 const router = express.Router();
 
@@ -166,6 +168,35 @@ router.post(
         );
       }
 
+      // Send FCM notification if teacher was assigned during upload
+      if (assigned_teacher_id) {
+        try {
+          const teacher = await Teacher.findOne({ teacher_id: assigned_teacher_id });
+          if (teacher && teacher.fcm_token) {
+            const notificationResult = await sendNotificationToTeacher(
+              teacher.fcm_token,
+              'New Task Assigned',
+              `You have been assigned a new task: ${task.task_name}`,
+              {
+                type: 'task_assigned',
+                task_id: task.task_id,
+                task_name: task.task_name,
+              }
+            );
+            
+            if (!notificationResult.success) {
+              console.warn('Failed to send FCM notification:', notificationResult.error);
+              // Don't fail the request if notification fails
+            }
+          } else {
+            console.log(`Teacher ${assigned_teacher_id} does not have an FCM token registered`);
+          }
+        } catch (notificationError) {
+          console.error('Error sending notification:', notificationError);
+          // Don't fail the request if notification fails
+        }
+      }
+
       // Clean up local file if it exists (only if using diskStorage)
       if (req.file.path) {
         try {
@@ -264,6 +295,34 @@ router.post(
     );
     if (!task) return res.status(404).json({ message: 'Task not found' });
     await Contact.updateMany({ task_id }, { assigned_teacher_id: teacher_id });
+    
+    // Send FCM notification to teacher
+    try {
+      const teacher = await Teacher.findOne({ teacher_id });
+      if (teacher && teacher.fcm_token) {
+        const notificationResult = await sendNotificationToTeacher(
+          teacher.fcm_token,
+          'New Task Assigned',
+          `You have been assigned a new task: ${task.task_name}`,
+          {
+            type: 'task_assigned',
+            task_id: task.task_id,
+            task_name: task.task_name,
+          }
+        );
+        
+        if (!notificationResult.success) {
+          console.warn('Failed to send FCM notification:', notificationResult.error);
+          // Don't fail the request if notification fails
+        }
+      } else {
+        console.log(`Teacher ${teacher_id} does not have an FCM token registered`);
+      }
+    } catch (notificationError) {
+      console.error('Error sending notification:', notificationError);
+      // Don't fail the request if notification fails
+    }
+    
     res.json({ ok: true });
   })
 );
@@ -309,12 +368,40 @@ router.put(
     const update = { ...req.body };
     if (update.assigned_teacher_id === '') update.assigned_teacher_id = null;
     
+    const oldTask = await Task.findOne({ task_id: id });
+    if (!oldTask) return res.status(404).json({ message: 'Task not found' });
+    
     const task = await Task.findOneAndUpdate({ task_id: id }, update, { new: true });
-    if (!task) return res.status(404).json({ message: 'Task not found' });
     
     // Update contacts if teacher assignment changed
-    if (req.body.assigned_teacher_id !== undefined) {
+    if (req.body.assigned_teacher_id !== undefined && 
+        oldTask.assigned_teacher_id !== update.assigned_teacher_id &&
+        update.assigned_teacher_id) {
       await Contact.updateMany({ task_id: id }, { assigned_teacher_id: update.assigned_teacher_id });
+      
+      // Send FCM notification if task is being assigned to a new teacher
+      try {
+        const teacher = await Teacher.findOne({ teacher_id: update.assigned_teacher_id });
+        if (teacher && teacher.fcm_token) {
+          const notificationResult = await sendNotificationToTeacher(
+            teacher.fcm_token,
+            'New Task Assigned',
+            `You have been assigned a new task: ${task.task_name}`,
+            {
+              type: 'task_assigned',
+              task_id: task.task_id,
+              task_name: task.task_name,
+            }
+          );
+          
+          if (!notificationResult.success) {
+            console.warn('Failed to send FCM notification:', notificationResult.error);
+          }
+        }
+      } catch (notificationError) {
+        console.error('Error sending notification:', notificationError);
+        // Don't fail the request if notification fails
+      }
     }
     
     res.json({ task });

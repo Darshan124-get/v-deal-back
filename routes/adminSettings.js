@@ -5,7 +5,7 @@ import { body, validationResult } from 'express-validator';
 import { requireAdmin } from '../middleware/auth.js';
 import { Admin } from '../models/Admin.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
-import { uploadToS3, deleteFromS3 } from '../config/s3.js';
+import { uploadToS3, deleteFromS3, generatePresignedUrl } from '../config/s3.js';
 
 const router = express.Router();
 
@@ -33,6 +33,29 @@ router.get(
     const { admin_id } = req.admin;
     const admin = await Admin.findOne({ admin_id }, { password_hash: 0, _id: 0, __v: 0 });
     if (!admin) return res.status(404).json({ message: 'Admin not found' });
+    
+    // Generate presigned URL for profile image if it exists
+    if (admin.profile_image_url) {
+      try {
+        // Check if URL is already presigned (contains signature)
+        const isPresigned = admin.profile_image_url.includes('X-Amz-Signature') || admin.profile_image_url.includes('X-Amz-Algorithm');
+        if (!isPresigned) {
+          // Extract S3 key from URL
+          const urlParts = admin.profile_image_url.split('.com/');
+          if (urlParts.length > 1) {
+            const s3Key = urlParts[1].split('?')[0]; // Remove query params if any
+            const presignedResult = await generatePresignedUrl(s3Key, 604800); // 1 week (max allowed by AWS)
+            if (presignedResult.success) {
+              admin.profile_image_url = presignedResult.url;
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error generating presigned URL for profile image:', error);
+        // Continue with original URL if presigned URL generation fails
+      }
+    }
+    
     res.json({ admin });
   })
 );
@@ -126,13 +149,17 @@ router.post(
       }
     }
     
-    // Update admin profile with new image URL
+    // Update admin profile with new image URL (store S3 key for presigned URL generation)
     admin.profile_image_url = uploadResult.location;
     admin.updated_at = new Date();
     await admin.save();
     
+    // Generate presigned URL for immediate access (valid for 1 week - max allowed by AWS)
+    const presignedResult = await generatePresignedUrl(s3Key, 604800); // 1 week (max allowed by AWS)
+    const finalUrl = presignedResult.success ? presignedResult.url : admin.profile_image_url;
+    
     res.json({ 
-      profile_image_url: admin.profile_image_url,
+      profile_image_url: finalUrl,
       message: 'Profile image uploaded successfully' 
     });
   })

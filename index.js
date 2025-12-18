@@ -3,6 +3,7 @@ import cors from 'cors';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
 import { connectToDatabase } from './config/db.js';
+import { initializeFirebase } from './services/fcmService.js';
 import adminAuthRouter from './routes/adminAuth.js';
 import teacherAuthRouter from './routes/teacherAuth.js';
 import teacherManagementRouter from './routes/teacherManagement.js';
@@ -15,6 +16,9 @@ import excelRoutes from './routes/excelRoutes.js';
 import { ensureDirectoryExists } from './utils/ensureDir.js';
 
 dotenv.config();
+
+// Initialize Firebase Admin SDK for FCM
+initializeFirebase();
 
 const app = express();
 app.use(cors());

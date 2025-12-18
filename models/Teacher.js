@@ -8,6 +8,7 @@ const TeacherSchema = new mongoose.Schema({
   phone: { type: String, required: true },
   password_hash: { type: String, required: true },
   status: { type: String, enum: ['active','inactive'], default: 'active' },
+  fcm_token: { type: String, default: null },
   created_at: { type: Date, default: Date.now }
 });
 

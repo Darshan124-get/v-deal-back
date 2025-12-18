@@ -58,13 +58,31 @@ router.post(
       { expiresIn: '12h' }
     );
     
+    // Generate presigned URL for profile image if it exists
+    let profileImageUrl = admin.profile_image_url || null;
+    if (profileImageUrl) {
+      try {
+        const { generatePresignedUrl } = await import('../config/s3.js');
+        const urlParts = profileImageUrl.split('.com/');
+        if (urlParts.length > 1) {
+          const s3Key = urlParts[1].split('?')[0];
+          const presignedResult = await generatePresignedUrl(s3Key, 604800); // 1 week (max allowed by AWS)
+          if (presignedResult.success) {
+            profileImageUrl = presignedResult.url;
+          }
+        }
+      } catch (error) {
+        console.error('Error generating presigned URL for profile image:', error);
+      }
+    }
+    
     res.json({ 
       token, 
       admin: { 
         admin_id: admin.admin_id, 
         name: admin.name, 
         email: admin.email,
-        profile_image_url: admin.profile_image_url || null
+        profile_image_url: profileImageUrl
       } 
     });
   })

@@ -61,7 +61,11 @@ export const uploadToS3 = async (file, key) => {
       Metadata: {
         originalName: file.originalname,
         uploadedAt: new Date().toISOString()
-      }
+      },
+      // Add cache control for image files (ACL not supported by this bucket)
+      ...(file.mimetype && file.mimetype.startsWith('image/') ? {
+        CacheControl: 'public, max-age=31536000'
+      } : {})
     });
 
     const result = await s3Client.send(command);

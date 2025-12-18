@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import { body, validationResult } from 'express-validator';
 import { Teacher } from '../models/Teacher.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
+import { authenticateTeacher } from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -57,6 +58,38 @@ router.post(
         status: teacher.status
       }
     });
+  })
+);
+
+// Update FCM token for teacher
+router.post(
+  '/fcm-token',
+  authenticateTeacher,
+  body('fcm_token').isString().notEmpty(),
+  asyncHandler(async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+    const { fcm_token } = req.body;
+    const teacher_id = req.user.teacher_id;
+
+    try {
+      await Teacher.findOneAndUpdate(
+        { teacher_id },
+        { fcm_token },
+        { new: true }
+      );
+      
+      res.json({ 
+        ok: true, 
+        message: 'FCM token updated successfully' 
+      });
+    } catch (error) {
+      res.status(500).json({ 
+        message: 'Error updating FCM token', 
+        error: error.message 
+      });
+    }
   })
 );
 
