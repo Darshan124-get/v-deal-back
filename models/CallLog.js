@@ -9,7 +9,10 @@ const CallLogSchema = new mongoose.Schema({
   review_notes: { type: String },
   call_time: { type: Date },
   duration: { type: Number },
-  submitted_date: { type: Date, default: Date.now }
+  submitted_date: { type: Date, default: Date.now },
+  // Store phone and name when contact_id is null (for admin display)
+  phone_number: { type: String },
+  contact_name: { type: String }
 });
 
 export const CallLog = mongoose.model('CallLog', CallLogSchema);

@@ -90,6 +90,23 @@ router.get(
       return res.status(404).json({ message: 'File not found or not assigned to you' });
     }
 
+    // Update task status from 'pending' to 'in-progress' when teacher downloads
+    if (file.taskId) {
+      try {
+        const task = await Task.findOne({ task_id: file.taskId });
+        if (task && task.status === 'pending') {
+          await Task.updateOne(
+            { task_id: file.taskId },
+            { status: 'in-progress' }
+          );
+          console.log(`Task ${file.taskId} status updated from 'pending' to 'in-progress'`);
+        }
+      } catch (taskUpdateError) {
+        console.error('Error updating task status on download:', taskUpdateError);
+        // Don't fail the download if task update fails
+      }
+    }
+
     try {
       console.log('Attempting to download file:', {
         excelId,

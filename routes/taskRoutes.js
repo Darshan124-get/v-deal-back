@@ -368,6 +368,9 @@ router.put(
     const update = { ...req.body };
     if (update.assigned_teacher_id === '') update.assigned_teacher_id = null;
     
+    // Remove status from update - status is automatically managed based on teacher actions
+    delete update.status;
+    
     const oldTask = await Task.findOne({ task_id: id });
     if (!oldTask) return res.status(404).json({ message: 'Task not found' });
     
